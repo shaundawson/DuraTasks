@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upcoming Events</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>Upcoming Events</h1>
+        <ul class="list-group">
+            {% for event in events %}
+            <li class="list-group-item">
+                <strong>{{ event.summary }}</strong><br>
+                Start: {{ event.start }}<br>
+                End: {{ event.end }}<br>
+                <a href="{{ event.link }}">View in Calendar</a><br>
+                Description: {{ event.description | safe }}<br>
+            </li>
+            {% else %}
+            <li class="list-group-item">No events found.</li>
+            {% endfor %}
+        </ul>
+    </div>
+</body>
+</html>
