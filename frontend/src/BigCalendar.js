@@ -4,12 +4,14 @@ import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import axios from 'axios';
 
+// Initialize moment localizer for consistent date handling
 const localizer = momentLocalizer(moment);
 
-function BigCalendar() {
-    const [events, setEvents] = useState([]);
-    const [loading, setLoading] = useState(false);
+function BigCalendarComponent() {
+    const [events, setEvents] = useState([]); // State to store event data
+    const [loading, setLoading] = useState(false); // State to indicate loading status
 
+    // Fetch events from the backend on component mount
     useEffect(() => {
         const fetchEvents = async () => {
             setLoading(true);
@@ -20,6 +22,7 @@ function BigCalendar() {
                     start: new Date(event.start.dateTime),
                     end: new Date(event.end.dateTime),
                     description: event.description,
+                    isTask: event.isTask || false, // Assume data includes isTask flag
                 }));
                 setEvents(formattedEvents);
             } catch (error) {
@@ -31,21 +34,20 @@ function BigCalendar() {
         fetchEvents();
     }, []);
 
+    // Return the rendered Calendar component
     return (
         <div className="container mt-4">
             <h1 className="mb-4">Your Calendar</h1>
             {loading && <div className="alert alert-info">Loading...</div>}
-            {!loading && (
-                <Calendar
-                    localizer={localizer}
-                    events={events}
-                    startAccessor="start"
-                    endAccessor="end"
-                    style={{ height: 500 }}
-                />
-            )}
+            <Calendar
+                localizer={localizer}
+                events={events}
+                startAccessor="start"
+                endAccessor="end"
+                style={{ height: 500 }}
+            />
         </div>
     );
 }
 
-export default BigCalendar;
+export default BigCalendarComponent;
