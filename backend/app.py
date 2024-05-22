@@ -6,9 +6,10 @@ from flask_session import Session
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from services import save_credentials_to_session, get_credentials_from_session, suggest_time_slots, create_task
+from services import save_credentials_to_session, get_credentials_from_session, validate_event_input
 from datetime import datetime, timedelta
 import logging
+import json
 
 # Load environment variables from .env file
 load_dotenv()
@@ -74,6 +75,7 @@ def oauth2callback():
     flow.fetch_token(authorization_response=request.url)
     credentials = flow.credentials
     save_credentials_to_session(session, credentials)
+    print("Credentials saved to session:", credentials)  # Debug log
     return redirect("http://localhost:3000/events")
 
 
@@ -101,22 +103,6 @@ def events():
     return jsonify(events_result.get('items', []))
 
 
-@app.route('/tasks')
-def tasks():
-    if 'credentials' not in session:
-        return jsonify({"error": "Unauthorized"}), 401
-    credentials = get_credentials_from_session(session)
-    if not credentials or credentials.expired:
-        return jsonify({"error": "Failed to load credentials"}), 500
-
-    service = build('tasks', 'v1', credentials=credentials)
-    try:
-        result = service.tasks().list(tasklist='@default').execute()
-        return jsonify(result.get('items', []))
-    except HttpError as error:
-        return jsonify({"error": "API call failed", "details": str(error)}), error.resp.status
-
-
 @app.route('/create_event', methods=['POST'])
 def create_event():
     """Create a new calendar event."""
@@ -128,11 +114,23 @@ def create_event():
     service = build('calendar', 'v3', credentials=credentials)
     try:
         event_data = request.json
+
+        # Validate event data
+        errors = validate_event_input(event_data)
+        if errors:
+            logging.error(f"Validation errors: {errors}")
+            return jsonify({"error": "Invalid event data", "details": errors}), 400
+
+        # Insert the event
         created_event = service.events().insert(
             calendarId='primary', body=event_data).execute()
         return jsonify(created_event), 201
     except HttpError as error:
-        return jsonify({"error": "API call failed", "details": error}), error.resp.status
+        error_content = error.content.decode('utf-8')
+        error_json = json.loads(error_content)
+        return jsonify({"error": "API call failed", "details": error_json}), error.resp.status
+    except Exception as e:
+        return jsonify({"error": "Unexpected error", "details": str(e)}), 500
 
 
 @app.route('/update_event/<event_id>', methods=['PUT', 'OPTIONS'])
@@ -142,21 +140,35 @@ def update_event(event_id):
         return '', 200  # Handle CORS preflight request
 
     if 'credentials' not in session:
+        print("No credentials in session")  # Debug log
         return jsonify({"error": "Unauthorized - No credentials"}), 401
 
     credentials = get_credentials_from_session(session)
     if not credentials or credentials.expired:
+        print("Failed to load credentials or credentials expired")  # Debug log
         return jsonify({"error": "Failed to load credentials"}), 500
 
     service = build('calendar', 'v3', credentials=credentials)
 
     try:
         event_data = request.json
+        logging.info(f"Received event data for update: {event_data}")
+
+        # Validate event data
+        errors = validate_event_input(event_data)
+        if errors:
+            logging.error(f"Validation errors: {errors}")
+            return jsonify({"error": "Invalid event data", "details": errors}), 400
+
         updated_event = service.events().update(
             calendarId='primary', eventId=event_id, body=event_data).execute()
         return jsonify(updated_event), 200
     except HttpError as error:
+        logging.error(f"API call failed: {error}")
         return jsonify({"error": "API call failed", "details": str(error)}), error.resp.status
+    except Exception as e:
+        logging.error(f"Unexpected error: {e}")
+        return jsonify({"error": "Unexpected error", "details": str(e)}), 500
 
 
 @app.route('/events/<event_id>', methods=['DELETE', 'OPTIONS'])
@@ -180,6 +192,90 @@ def delete_event(event_id):
         return jsonify({"status": "success"}), 200
     except HttpError as error:
         return jsonify({"error": "Failed to delete event", "details": str(error)}), 400
+
+
+@app.route('/tasks')
+def tasks():
+    if 'credentials' not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    credentials = get_credentials_from_session(session)
+    if not credentials or credentials.expired:
+        return jsonify({"error": "Failed to load credentials"}), 500
+
+    service = build('tasks', 'v1', credentials=credentials)
+    try:
+        result = service.tasks().list(tasklist='@default').execute()
+        return jsonify(result.get('items', []))
+    except HttpError as error:
+        return jsonify({"error": "API call failed", "details": str(error)}), error.resp.status
+
+
+@app.route('/create_task', methods=['POST'])
+def create_task_route():
+    """Create a new task."""
+    if 'credentials' not in session:
+        return jsonify({"error": "No credentials"}), 401
+    credentials = get_credentials_from_session(session)
+    if not credentials or credentials.expired:
+        return jsonify({"error": "Invalid or expired credentials"}), 401
+    service = build('tasks', 'v1', credentials=credentials)
+    try:
+        task_data = request.json
+        created_task = service.tasks().insert(
+            tasklist='@default', body=task_data).execute()
+        return jsonify(created_task), 201
+    except HttpError as error:
+        return jsonify({"error": "API call failed", "details": error}), error.resp.status
+
+
+@app.route('/update_task/<task_id>', methods=['PUT', 'OPTIONS'])
+def update_task(task_id):
+    """Update a specified task."""
+    if request.method == 'OPTIONS':
+        return '', 200  # Handle CORS preflight request
+
+    if 'credentials' not in session:
+        return jsonify({"error": "Unauthorized - No credentials"}), 401
+
+    credentials = get_credentials_from_session(session)
+    if not credentials or credentials.expired:
+        return jsonify({"error": "Failed to load credentials"}), 500
+
+    service = build('tasks', 'v1', credentials=credentials)
+
+    try:
+        task_data = request.json
+        updated_task = service.tasks().update(
+            tasklist='@default', task=task_id, body=task_data).execute()
+        return jsonify(updated_task), 200
+    except HttpError as error:
+        logging.error(f"API call failed: {error}")
+        return jsonify({"error": "API call failed", "details": str(error)}), error.resp.status
+    except Exception as e:
+        logging.error(f"Unexpected error: {e}")
+        return jsonify({"error": "Unexpected error", "details": str(e)}), 500
+
+
+@app.route('/tasks/<task_id>', methods=['DELETE', 'OPTIONS'])
+def delete_task(task_id):
+    """Delete a specified task."""
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    if 'credentials' not in session:
+        return jsonify({"error": "Unauthorized - No credentials"}), 401
+
+    credentials = get_credentials_from_session(session)
+    if not credentials or credentials.expired:
+        return jsonify({"error": "Failed to load credentials"}), 500
+
+    service = build('tasks', 'v1', credentials=credentials)
+
+    try:
+        service.tasks().delete(tasklist='@default', task=task_id).execute()
+        return jsonify({"status": "success"}), 200
+    except HttpError as error:
+        return jsonify({"error": "Failed to delete task", "details": str(error)}), 400
 
 
 if __name__ == "__main__":

@@ -37,8 +37,26 @@ def get_credentials_from_session(session):
     creds_json = session.get('credentials')
     if creds_json:
         creds_info = json.loads(creds_json)
+        print("Retrieved credentials from session:", creds_info)  # Debug log
         return deserialize_credentials(creds_info)
     return None
+
+
+# Validate event input data
+def validate_event_input(event_data):
+    required_fields = ['summary', 'start', 'end']
+    nested_required_fields = ['dateTime']
+    errors = []
+
+    for field in required_fields:
+        if field not in event_data:
+            errors.append(f"Missing required top-level field: {field}")
+
+    for field, subfield in nested_required_fields:
+        if field not in event_data or subfield not in event_data[field]:
+            errors.append(f"Missing required nested field: {field}.{subfield}")
+
+    return errors
 
 
 # Task-related functions
