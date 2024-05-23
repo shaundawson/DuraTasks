@@ -1,6 +1,6 @@
-# DuraTasks Application
+# DuraTasks
 
-DuraTasks is a web application designed to manage your calendar events and tasks efficiently. With Google authentication, users can log in securely to manage their events and suggest time slots for tasks based on their existing schedule.
+ A web app designed to manage your calendar events and tasks efficiently. With Google authentication, users can log in securely to manage their events and suggest time slots for tasks based on their existing schedule.
 
 ## Features
 
